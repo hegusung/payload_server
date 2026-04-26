@@ -1,0 +1,21 @@
+services:
+  server:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      MGMT_PORT:  "7082"
+      SERVE_PORT: "8443"
+      DATA_DIR:   "/data"
+      MGMT_TOKEN: "${MGMT_TOKEN:-changeme}"
+      BODY_404:   "${BODY_404:-<!DOCTYPE html><html><body>Not Found</body></html>}"
+      # SSL (optional — mount certs in /ssl/)
+      # SSL_CERT: /ssl/cert.pem
+      # SSL_KEY:  /ssl/key.pem
+    network_mode: host
+    volumes:
+      - payload_data:/data
+
+volumes:
+  payload_data:
