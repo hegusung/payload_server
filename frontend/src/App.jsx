@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 
 const TOKEN_KEY = 'ps_token'
-const SERVER_KEY = 'ps_server'
 
 function getToken() { return localStorage.getItem(TOKEN_KEY) || '' }
-function getServer() { return localStorage.getItem(SERVER_KEY) || '' }
+function getServer() { return window.location.origin }
 
 async function apiFetch(server, token, method, path, body) {
   const url = `${server.replace(/\/$/, '')}/api${path}`
@@ -48,21 +47,40 @@ function Toast({ msg, type, onDone }) {
   )
 }
 
+// auth status: 'unknown' | 'checking' | 'ok' | 'error'
 export default function App() {
-  const [server, setServer]   = useState(getServer)
+  const server = getServer()
   const [token, setToken]     = useState(getToken)
   const [files, setFiles]     = useState([])
   const [loading, setLoading] = useState(false)
   const [toast, setToast]     = useState(null)
   const [showUpload, setShowUpload] = useState(false)
   const [tab, setTab]         = useState('files')  // 'files' | 'presets' | 'logs'
+  const [authStatus, setAuthStatus] = useState('unknown')  // 'unknown'|'checking'|'ok'|'error'
+  const [authError, setAuthError]   = useState('')
 
   const showToast = (msg, type = 'success') => setToast({ msg, type })
 
-  const save = () => {
-    localStorage.setItem(SERVER_KEY, server)
+  const checkAuth = async (srv, tok) => {
+    if (!srv || !tok) { setAuthStatus('unknown'); return false }
+    setAuthStatus('checking')
+    try {
+      await apiFetch(srv, tok, 'GET', '/files')
+      setAuthStatus('ok')
+      setAuthError('')
+      return true
+    } catch (e) {
+      setAuthStatus('error')
+      setAuthError(e.message)
+      return false
+    }
+  }
+
+  const save = async () => {
     localStorage.setItem(TOKEN_KEY, token)
-    showToast('Settings saved')
+    const ok = await checkAuth(server, token)
+    if (ok) { showToast('Connected'); load() }
+    else showToast(authError || 'Authentication failed', 'error')
   }
 
   const load = async () => {
@@ -70,14 +88,20 @@ export default function App() {
     try {
       const data = await apiFetch(server, token, 'GET', '/files')
       setFiles(data)
+      setAuthStatus('ok')
     } catch (e) {
       showToast(e.message, 'error')
+      setAuthStatus('error')
+      setAuthError(e.message)
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { if (server && token) load() }, [])
+  useEffect(() => {
+    if (server && token) { checkAuth(server, token).then(ok => { if (ok) load() }) }
+    else setAuthStatus('unknown')
+  }, [])
 
   const del = async (id) => {
     if (!confirm('Delete this file?')) return
@@ -96,25 +120,48 @@ export default function App() {
       <header className="border-b border-gray-800 px-6 py-3 flex items-center gap-4">
         <span className="text-lg font-semibold tracking-tight text-white">payload-server</span>
         <span className="text-xs text-gray-500 font-mono">file hosting</span>
+
+        {/* Auth status badge */}
+        {authStatus === 'unknown' && (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">⚪ Not configured</span>
+        )}
+        {authStatus === 'checking' && (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-900/60 text-yellow-300 border border-yellow-700/50">🟡 Connecting…</span>
+        )}
+        {authStatus === 'ok' && (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-green-900/60 text-green-300 border border-green-700/50">🟢 Connected</span>
+        )}
+        {authStatus === 'error' && (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-red-900/60 text-red-300 border border-red-700/50" title={authError}>🔴 {authError.includes('401') || authError.toLowerCase().includes('invalid') ? 'Invalid token' : authError.includes('fetch') || authError.includes('Failed') ? 'Server unreachable' : 'Auth error'}</span>
+        )}
+
         <div className="ml-auto flex items-center gap-2">
           <input
-            value={server}
-            onChange={e => setServer(e.target.value)}
-            placeholder="http://localhost:8080"
-            className="w-56 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs font-mono text-gray-200 focus:outline-none focus:border-blue-500"
-          />
-          <input
             value={token}
-            onChange={e => setToken(e.target.value)}
+            onChange={e => { setToken(e.target.value); setAuthStatus('unknown') }}
             placeholder="token"
             type="password"
-            className="w-32 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs font-mono text-gray-200 focus:outline-none focus:border-blue-500"
+            className={`w-32 bg-gray-900 rounded px-2 py-1 text-xs font-mono text-gray-200 focus:outline-none border ${
+              authStatus === 'ok' ? 'border-green-600' : authStatus === 'error' ? 'border-red-600' : 'border-gray-700 focus:border-blue-500'
+            }`}
           />
-          <button onClick={save} className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">Save</button>
-          <button onClick={load} className="text-xs bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded">Refresh</button>
-          {tab === 'files' && <button onClick={() => setShowUpload(true)} className="text-xs bg-red-700 hover:bg-red-600 px-2 py-1 rounded font-semibold">+ Upload</button>}
+          <button onClick={save} className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">Connect</button>
+          <button onClick={load} disabled={authStatus !== 'ok'} className="text-xs bg-blue-700 hover:bg-blue-600 disabled:opacity-40 px-2 py-1 rounded">Refresh</button>
+          {tab === 'files' && <button onClick={() => setShowUpload(true)} disabled={authStatus !== 'ok'} className="text-xs bg-red-700 hover:bg-red-600 disabled:opacity-40 px-2 py-1 rounded font-semibold">+ Upload</button>}
         </div>
       </header>
+
+      {/* No-config banner */}
+      {authStatus === 'unknown' && !server && (
+        <div className="bg-yellow-900/30 border-b border-yellow-700/40 px-6 py-2 text-xs text-yellow-300">
+          ⚠ Enter the server URL and token above, then click <strong>Connect</strong>.
+        </div>
+      )}
+      {authStatus === 'error' && (
+        <div className="bg-red-900/30 border-b border-red-700/40 px-6 py-2 text-xs text-red-300">
+          🔴 <strong>Authentication failed</strong> — {authError}. Check your server URL and token.
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-800 px-6 flex gap-1">
