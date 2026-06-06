@@ -1,8 +1,8 @@
 services:
   server:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     environment:
       MGMT_PORT:  "7082"
