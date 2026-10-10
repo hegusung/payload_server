@@ -43,6 +43,33 @@ class DownloadLog(Base):
     ts            = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 
+class DeliveryTarget(Base):
+    """A configured external destination for deploying payloads (e.g. an S3 bucket)."""
+    __tablename__ = 'delivery_targets'
+    id            = Column(Integer, primary_key=True)
+    name          = Column(String, unique=True, nullable=False, index=True)  # friendly label
+    provider_key  = Column(String, nullable=False)       # e.g. 's3'
+    config_enc    = Column(Text, nullable=False, default='')   # encrypted JSON (app.crypto)
+    created_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    note          = Column(String, nullable=True)
+
+
+class Deployment(Base):
+    """A payload staged to a delivery target. One file can fan out to many targets."""
+    __tablename__ = 'deployments'
+    id            = Column(Integer, primary_key=True)
+    file_id       = Column(Integer, nullable=False, index=True)   # HostedFile.id
+    target_id     = Column(Integer, nullable=False, index=True)   # DeliveryTarget.id
+    uri           = Column(String, nullable=False, index=True)
+    status        = Column(String, default='pending')   # pending | deployed | error
+    public_url    = Column(String, nullable=True)
+    provider_ref  = Column(String, nullable=True)        # handle used to delete remotely
+    bytes_pushed  = Column(BigInteger, default=0)
+    error         = Column(Text, nullable=True)
+    synced_at     = Column(DateTime, nullable=True)
+    created_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class ContentTypePreset(Base):
     """Magic bytes preset for a given Content-Type.
 

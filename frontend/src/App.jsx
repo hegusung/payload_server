@@ -55,6 +55,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [toast, setToast]     = useState(null)
   const [showUpload, setShowUpload] = useState(false)
+  const [deployFile, setDeployFile] = useState(null)  // file row being deployed, or null
   const [tab, setTab]         = useState('files')  // 'files' | 'presets' | 'logs'
   const [authStatus, setAuthStatus] = useState('unknown')  // 'unknown'|'checking'|'ok'|'error'
   const [authError, setAuthError]   = useState('')
@@ -165,7 +166,7 @@ export default function App() {
 
       {/* Tabs */}
       <div className="border-b border-gray-800 px-6 flex gap-1">
-        {[['files', '📁 Files'], ['presets', '🎨 Presets'], ['logs', '📋 Logs']].map(([t, label]) => (
+        {[['files', '📁 Files'], ['targets', '🚀 Targets'], ['presets', '🎨 Presets'], ['logs', '📋 Logs']].map(([t, label]) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -178,6 +179,9 @@ export default function App() {
 
       {/* File list */}
       <main className="flex-1 p-6">
+        {tab === 'targets' && (
+          <TargetsPanel server={server} token={token} showToast={showToast} />
+        )}
         {tab === 'presets' && (
           <PresetsPanel server={server} token={token} showToast={showToast} />
         )}
@@ -217,10 +221,16 @@ export default function App() {
                   <td className="py-2.5 pr-4 text-gray-500 text-xs">{formatDate(f.last_download)}</td>
                   <td className="py-2.5 pr-4 text-gray-500 text-xs italic">{f.note || '—'}</td>
                   <td className="py-2.5">
-                    <button
-                      onClick={() => del(f.id)}
-                      className="text-xs text-red-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >Delete</button>
+                    <div className="flex gap-3 justify-end">
+                      <button
+                        onClick={() => setDeployFile(f)}
+                        className="text-xs text-blue-400 hover:text-blue-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >Deploy</button>
+                      <button
+                        onClick={() => del(f.id)}
+                        className="text-xs text-red-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >Delete</button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -235,6 +245,16 @@ export default function App() {
           token={token}
           onClose={() => setShowUpload(false)}
           onUploaded={(f) => { setFiles(prev => [f, ...prev.filter(x => x.uri !== f.uri)]); showToast('Uploaded') }}
+          showToast={showToast}
+        />
+      )}
+
+      {deployFile && (
+        <DeployModal
+          server={server}
+          token={token}
+          file={deployFile}
+          onClose={() => setDeployFile(null)}
           showToast={showToast}
         />
       )}
@@ -620,6 +640,433 @@ function PresetsPanel({ server, token, showToast }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function statusBadge(status) {
+  const map = {
+    deployed: 'bg-green-900/60 text-green-300 border-green-700/50',
+    pending:  'bg-yellow-900/60 text-yellow-300 border-yellow-700/50',
+    error:    'bg-red-900/60 text-red-300 border-red-700/50',
+  }
+  const cls = map[status] || 'bg-gray-800 text-gray-400 border-gray-700'
+  return <span className={`text-xs px-2 py-0.5 rounded-full border ${cls}`}>{status}</span>
+}
+
+function StorageUrlExamples() {
+  const examples = [
+    { name: 'AWS S3', endpoint: 'Leave blank (AWS selects the endpoint)',
+      detail: 'https://s3.<region>.amazonaws.com', region: 'e.g. eu-west-3',
+      docs: 'https://docs.aws.amazon.com/AmazonS3/latest/userguide/VirtualHosting.html' },
+    { name: 'Cloudflare R2', endpoint: 'https://<cloudflare-account-id>.r2.cloudflarestorage.com',
+      detail: 'Copy the S3 API endpoint from R2 Overview. Use your Cloudflare account ID.', region: 'auto',
+      docs: 'https://developers.cloudflare.com/r2/get-started/s3/' },
+    { name: 'MinIO', endpoint: 'https://<your-minio-host>:<api-port>',
+      detail: 'Use the S3 API address configured for your server, not the Console address.', region: 'Your server region',
+      docs: 'https://github.com/minio/minio#quickstart' },
+    { name: 'DigitalOcean Spaces', endpoint: 'https://<region>.digitaloceanspaces.com',
+      detail: 'Example: https://nyc3.digitaloceanspaces.com', region: 'e.g. nyc3',
+      docs: 'https://docs.digitalocean.com/products/spaces/reference/aws-sdks/' },
+    { name: 'Backblaze B2', endpoint: 'https://s3.<region>.backblazeb2.com',
+      detail: 'Copy the S3 endpoint from your bucket details.', region: 'e.g. us-west-004',
+      docs: 'https://www.backblaze.com/docs/en/cloud-storage-call-the-s3-compatible-api' },
+  ]
+
+  return (
+    <div className="mt-2 rounded-lg border border-gray-700 bg-gray-800/40 p-3 text-xs space-y-3">
+      <p className="text-gray-300 font-medium">Endpoint URL examples</p>
+      <p className="text-gray-400">Replace values in &lt;brackets&gt; with your settings. Enter the bucket separately; keep its name and object paths out of the endpoint URL.</p>
+      {examples.map(example => (
+        <div key={example.name} className="space-y-1">
+          <a href={example.docs} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">{example.name}</a>
+          <code className="block text-gray-200 break-all">{example.endpoint}</code>
+          <p className="text-gray-400 break-words">{example.detail}</p>
+          <p className="text-gray-500">Region: {example.region}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function TargetsPanel({ server, token, showToast }) {
+  const [providers, setProviders] = useState([])
+  const [targets, setTargets]     = useState([])
+  const [editing, setEditing]     = useState(null)  // null | target-with-config
+  const [saving, setSaving]       = useState(false)
+  const [health, setHealth]       = useState({})    // id -> {ok,message,checking}
+  const [deletingBucket, setDeletingBucket] = useState(null)
+  const [filesTarget, setFilesTarget] = useState(null)
+
+  const load = async () => {
+    try {
+      const [prov, tgts] = await Promise.all([
+        apiFetch(server, token, 'GET', '/providers'),
+        apiFetch(server, token, 'GET', '/targets'),
+      ])
+      setProviders(prov)
+      setTargets(tgts)
+    } catch (e) { showToast(e.message, 'error') }
+  }
+
+  useEffect(() => { if (server && token) load() }, [])
+
+  const startNew = () => {
+    const p = providers[0]
+    if (!p) { showToast('No providers available', 'error'); return }
+    setEditing({ name: '', provider_key: p.key, config: {}, note: '' })
+  }
+
+  const providerDef = (key) => providers.find(p => p.key === key)
+
+  const save = async () => {
+    if (!editing.name.trim()) { showToast('Name required', 'error'); return }
+    setSaving(true)
+    try {
+      if (editing.id) await apiFetch(server, token, 'PUT', `/targets/${editing.id}`, editing)
+      else            await apiFetch(server, token, 'POST', '/targets', editing)
+      showToast('Saved')
+      setEditing(null)
+      load()
+    } catch (e) { showToast(e.message, 'error') }
+    finally { setSaving(false) }
+  }
+
+  const del = async (id) => {
+    if (!confirm('Delete this target? (deployment records for it are removed too)')) return
+    try {
+      await apiFetch(server, token, 'DELETE', `/targets/${id}`)
+      setTargets(t => t.filter(x => x.id !== id))
+      showToast('Deleted')
+    } catch (e) { showToast(e.message, 'error') }
+  }
+
+  const checkHealth = async (id) => {
+    setHealth(h => ({ ...h, [id]: { checking: true } }))
+    try {
+      const r = await apiFetch(server, token, 'POST', `/targets/${id}/health`)
+      setHealth(h => ({ ...h, [id]: r }))
+    } catch (e) {
+      setHealth(h => ({ ...h, [id]: { ok: false, message: e.message } }))
+    }
+  }
+
+  const deleteBucket = async (target) => {
+    const isAzure = target.provider_key === 'azure'
+    const resource = isAzure ? 'container' : 'bucket'
+    const name = isAzure ? target.config.container : target.config.bucket
+    if (!confirm(`Delete ${resource} "${name}" and this target? The ${resource} must be empty. Deployment records will also be removed.`)) return
+    setDeletingBucket(target.id)
+    try {
+      await apiFetch(server, token, 'DELETE', `/targets/${target.id}?delete_${resource}=true`)
+      setTargets(t => t.filter(x => x.id !== target.id))
+      showToast(`${isAzure ? 'Container' : 'Bucket'} and target deleted`)
+    } catch (e) { showToast(e.message, 'error') }
+    finally { setDeletingBucket(null) }
+  }
+
+  const def = editing ? providerDef(editing.provider_key) : null
+
+  return (
+    <div className="max-w-4xl">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-200">Delivery Targets</h2>
+          <p className="text-xs text-gray-500 mt-0.5">External destinations for staging payloads. Transforms &amp; padding are baked into the uploaded object; serve-time features (decoy 404, download counting, header spoof) do not apply to cloud-hosted files.</p>
+        </div>
+        <button onClick={startNew} className="text-xs bg-blue-700 hover:bg-blue-600 px-3 py-1.5 rounded font-medium">+ New target</button>
+      </div>
+
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="text-left text-xs text-gray-500 border-b border-gray-800">
+            <th className="pb-2 pr-4 font-medium">Name</th>
+            <th className="pb-2 pr-4 font-medium">Provider</th>
+            <th className="pb-2 pr-4 font-medium">Config</th>
+            <th className="pb-2 pr-4 font-medium">Health</th>
+            <th className="pb-2 pr-4 font-medium">Note</th>
+            <th className="pb-2 font-medium"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {targets.map(t => (
+            <tr key={t.id} className="border-b border-gray-800/50 hover:bg-gray-900/40 group align-top">
+              <td className="py-2.5 pr-4 text-gray-200 text-xs font-semibold">{t.name}</td>
+              <td className="py-2.5 pr-4 text-orange-300 text-xs font-mono">{t.provider_key}</td>
+              <td className="py-2.5 pr-4 text-gray-400 text-xs font-mono">
+                {Object.entries(t.config).filter(([, v]) => v !== '' && v != null).map(([k, v]) => (
+                  <div key={k}><span className="text-gray-600">{k}=</span>{String(v)}</div>
+                ))}
+              </td>
+              <td className="py-2.5 pr-4 text-xs">
+                {health[t.id]?.checking ? <span className="text-yellow-300">checking…</span>
+                  : health[t.id] ? (health[t.id].ok
+                      ? <span className="text-green-400" title={health[t.id].message}>● ok</span>
+                      : <div className="text-red-400">
+                          <span>● fail</span>
+                          <p className="mt-1 max-w-xs whitespace-pre-wrap break-words">{health[t.id].message || 'Health check failed.'}</p>
+                        </div>)
+                  : <button onClick={() => checkHealth(t.id)} className="text-blue-400 hover:text-blue-300">check</button>}
+              </td>
+              <td className="py-2.5 pr-4 text-gray-500 text-xs italic">{t.note || '—'}</td>
+              <td className="py-2.5 flex gap-3">
+                <button onClick={() => setFilesTarget(t)} className="text-xs text-blue-400 hover:text-blue-300">Files</button>
+                <button onClick={() => setEditing({ ...t, config: { ...t.config } })} className="text-xs text-blue-400 hover:text-blue-300 opacity-0 group-hover:opacity-100 transition-opacity">Edit</button>
+                <button onClick={() => del(t.id)} disabled={deletingBucket !== null} className="text-xs text-red-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">Delete target</button>
+                {['s3', 'r2', 'azure'].includes(t.provider_key) && <button onClick={() => deleteBucket(t)} disabled={deletingBucket !== null}
+                  className="text-xs text-red-500 hover:text-red-400 disabled:opacity-50">
+                  {deletingBucket === t.id ? 'Deleting…' : t.provider_key === 'azure' ? 'Delete container' : 'Delete bucket'}
+                </button>}
+              </td>
+            </tr>
+          ))}
+          {targets.length === 0 && (
+            <tr><td colSpan={6} className="py-8 text-center text-gray-600 text-sm">No targets. Click "+ New target" to configure one.</td></tr>
+          )}
+        </tbody>
+      </table>
+
+      {filesTarget && <TargetFilesModal key={filesTarget.id} server={server} token={token}
+        target={filesTarget} onClose={() => setFilesTarget(null)} showToast={showToast} />}
+
+      {editing && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={e => e.target === e.currentTarget && setEditing(null)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto space-y-4">
+            <h3 className="text-base font-semibold">{editing.id ? 'Edit target' : 'New target'}</h3>
+
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Name</label>
+              <input value={editing.name} onChange={e => setEditing(p => ({ ...p, name: e.target.value }))}
+                placeholder="e.g. prod-r2"
+                className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-blue-500" />
+            </div>
+
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Provider</label>
+              <select value={editing.provider_key} disabled={!!editing.id}
+                onChange={e => setEditing(p => ({ ...p, provider_key: e.target.value, config: {} }))}
+                className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-blue-500 disabled:opacity-50">
+                {providers.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+              </select>
+            </div>
+
+            {def?.config_fields.map(f => (
+              <div key={f.key}>
+                <label className="text-xs text-gray-400 block mb-1">
+                  {f.label}{f.required && <span className="text-red-400"> *</span>}
+                  {f.help && <span className="text-gray-600 block font-normal mt-0.5">{f.help}</span>}
+                </label>
+                {f.type === 'bool' ? <input
+                  type="checkbox"
+                  checked={editing.config[f.key] === true}
+                  onChange={e => setEditing(p => ({ ...p, config: { ...p.config, [f.key]: e.target.checked } }))}
+                  className="accent-blue-500" /> : <input
+                  type={f.type === 'password' ? 'password' : 'text'}
+                  value={editing.config[f.key] ?? ''}
+                  placeholder={f.placeholder || (f.secret && editing.id ? '•••••••• (unchanged)' : '')}
+                  onChange={e => setEditing(p => ({ ...p, config: { ...p.config, [f.key]: e.target.value } }))}
+                  className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm font-mono text-gray-100 focus:outline-none focus:border-blue-500" />}
+                {editing.provider_key === 's3' && f.key === 'endpoint_url' && <StorageUrlExamples />}
+                {editing.provider_key === 'r2' && f.key === 'account_id' && (
+                  <p className="mt-2 text-xs text-gray-400 break-all">S3 endpoint: https://{editing.config.account_id || '<cloudflare-account-id>'}.r2.cloudflarestorage.com · Region: auto</p>
+                )}
+                {editing.provider_key === 's3' && f.key === 'public_base_url' && (
+                  <p className="mt-2 text-xs text-gray-400 break-words">
+                    Enter the URL used to download objects, such as https://cdn.example.com.
+                    For R2, use your enabled https://pub-&lt;id&gt;.r2.dev URL or a custom domain.
+                    For Spaces, you can use https://&lt;bucket&gt;.&lt;region&gt;.cdn.digitaloceanspaces.com when its CDN is enabled.
+                    The object key is appended to this URL. Public access must be configured separately.
+                  </p>
+                )}
+              </div>
+            ))}
+
+            <div>
+              <label className="text-xs text-gray-400 block mb-1">Note <span className="text-gray-600">(optional)</span></label>
+              <input value={editing.note || ''} onChange={e => setEditing(p => ({ ...p, note: e.target.value }))}
+                className="w-full bg-gray-800 border border-gray-600 rounded px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-blue-500" />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setEditing(null)} className="text-sm text-gray-400 hover:text-gray-200 px-4 py-2">Cancel</button>
+              <button onClick={save} disabled={saving}
+                className="text-sm bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white px-4 py-2 rounded-lg font-semibold">
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TargetFilesModal({ server, token, target, onClose, showToast }) {
+  const [files, setFiles] = useState([])
+  const [prefix, setPrefix] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [deleteErrors, setDeleteErrors] = useState([])
+
+  const load = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const result = await apiFetch(server, token, 'GET', `/targets/${target.id}/files`)
+      setFiles(result.files)
+      setPrefix(result.prefix)
+    } catch (e) { setError(e.message); setFiles([]) }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { load() }, [])
+
+  const remove = async (refs, all = false) => {
+    const destination = target.config.container || target.config.bucket
+    if (!confirm(all
+      ? `Delete all ${refs.length} displayed files from "${destination}"?`
+      : `Delete "${refs[0]}" from "${destination}"?`)) return
+    setBusy(true)
+    setDeleteErrors([])
+    try {
+      const result = await apiFetch(server, token, 'POST', `/targets/${target.id}/files/delete`, { refs })
+      setDeleteErrors(result.errors)
+      if (result.deleted.length) showToast(`Deleted ${result.deleted.length} file${result.deleted.length === 1 ? '' : 's'}`)
+      await load()
+    } catch (e) { setDeleteErrors([{ ref: '', message: e.message }]) }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={e => !busy && e.target === e.currentTarget && onClose()}>
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold">Active files — {target.name}</h3>
+            <p className="text-xs text-gray-400 mt-1">{target.config.container || target.config.bucket} · {files.length} files</p>
+          </div>
+          <button onClick={load} disabled={loading || busy} className="text-xs text-blue-400 disabled:opacity-50">Refresh</button>
+        </div>
+        <p className="text-xs text-gray-500">{prefix ? `Showing files with prefix "${prefix}".` : 'Showing all current files in this bucket or container.'} Historical versions and soft-deleted files are excluded.</p>
+        {error && <p role="alert" className="text-sm text-red-400 whitespace-pre-wrap break-words">{error}</p>}
+        {deleteErrors.map((item, index) => <p key={index} role="alert" className="text-xs text-red-400 break-words">{item.ref && `${item.ref}: `}{item.message}</p>)}
+        {loading ? <p className="text-sm text-gray-400">Loading files…</p> : !error && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="text-gray-500 border-b border-gray-700"><tr>
+                <th className="py-2 pr-3">File</th><th className="py-2 pr-3">Size</th>
+                <th className="py-2 pr-3">Modified</th><th className="py-2"></th>
+              </tr></thead>
+              <tbody>{files.map(file => <tr key={file.ref} className="border-b border-gray-800">
+                <td className="py-2 pr-3 max-w-sm break-all"><a href={file.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">{file.ref}</a></td>
+                <td className="py-2 pr-3 whitespace-nowrap text-gray-400">{formatBytes(file.size)}</td>
+                <td className="py-2 pr-3 text-gray-400">{file.modified_at ? new Date(file.modified_at).toLocaleString() : '—'}</td>
+                <td className="py-2"><button onClick={() => remove([file.ref])} disabled={busy} className="text-red-400 disabled:opacity-50">Delete</button></td>
+              </tr>)}</tbody>
+            </table>
+            {files.length === 0 && <p className="py-6 text-center text-gray-500">No active files.</p>}
+          </div>
+        )}
+        <div className="flex justify-between gap-3 pt-2">
+          <button onClick={() => remove(files.map(file => file.ref), true)} disabled={busy || loading || !!error || files.length === 0}
+            className="text-sm text-red-400 disabled:opacity-50">{busy ? 'Deleting…' : 'Delete all files'}</button>
+          <button onClick={onClose} disabled={busy} className="text-sm text-gray-400 disabled:opacity-50">Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DeployModal({ server, token, file, onClose, showToast }) {
+  const [targets, setTargets]         = useState([])
+  const [deployments, setDeployments] = useState([])
+  const [busy, setBusy]               = useState(false)
+
+  const load = async () => {
+    try {
+      const [tgts, deps] = await Promise.all([
+        apiFetch(server, token, 'GET', '/targets'),
+        apiFetch(server, token, 'GET', `/deployments?file_id=${file.id}`),
+      ])
+      setTargets(tgts)
+      setDeployments(deps)
+    } catch (e) { showToast(e.message, 'error') }
+  }
+
+  useEffect(() => { load() }, [])
+
+  // Poll while any deployment is pending.
+  useEffect(() => {
+    if (!deployments.some(d => d.status === 'pending')) return
+    const t = setInterval(load, 1500)
+    return () => clearInterval(t)
+  }, [deployments])
+
+  const deploy = async (target_id) => {
+    setBusy(true)
+    try {
+      await apiFetch(server, token, 'POST', `/files/${file.id}/deploy`, { target_id })
+      showToast('Deploy started')
+      load()
+    } catch (e) { showToast(e.message, 'error') }
+    finally { setBusy(false) }
+  }
+
+  const undeploy = async (id) => {
+    if (!confirm('Remove this deployment (deletes the remote object)?')) return
+    try {
+      await apiFetch(server, token, 'DELETE', `/deployments/${id}`)
+      showToast('Removed')
+      load()
+    } catch (e) { showToast(e.message, 'error') }
+  }
+
+  const depFor = (tid) => deployments.find(d => d.target_id === tid)
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-40" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto space-y-4">
+        <div>
+          <h2 className="text-base font-semibold text-white">Deploy payload</h2>
+          <p className="text-xs text-gray-500 mt-0.5 font-mono text-green-400">{file.uri}</p>
+        </div>
+
+        {targets.length === 0 && (
+          <div className="text-sm text-gray-500 bg-gray-800/50 rounded-lg p-4">
+            No delivery targets configured. Add one in the <span className="text-blue-400">🚀 Targets</span> tab first.
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {targets.map(t => {
+            const d = depFor(t.id)
+            return (
+              <div key={t.id} className="flex items-center gap-3 bg-gray-800/50 rounded-lg px-3 py-2.5">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-gray-200 font-medium">{t.name} <span className="text-xs text-orange-300 font-mono">({t.provider_key})</span></div>
+                  {d && (
+                    <div className="text-xs mt-1 flex items-center gap-2 flex-wrap">
+                      {statusBadge(d.status)}
+                      {d.public_url && <a href={d.public_url} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline font-mono truncate max-w-[22rem]">{d.public_url}</a>}
+                      {d.error && <span className="text-red-400" title={d.error}>⚠ {d.error.slice(0, 60)}</span>}
+                    </div>
+                  )}
+                </div>
+                {d && <button onClick={() => undeploy(d.id)} className="text-xs text-red-500 hover:text-red-400">Remove</button>}
+                <button onClick={() => deploy(t.id)} disabled={busy}
+                  className="text-xs bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white px-3 py-1.5 rounded font-semibold">
+                  {d ? 'Redeploy' : 'Deploy'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <button onClick={onClose} className="text-sm text-gray-400 hover:text-gray-200 px-4 py-2">Close</button>
+        </div>
+      </div>
     </div>
   )
 }

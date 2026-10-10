@@ -231,6 +231,53 @@ volumes:
 
 ---
 
+## Delivery target files
+
+Click **Files** next to a delivery target to view current objects directly from
+its bucket or container, including files uploaded outside this app. The view
+shows file links, sizes, and modification times and respects the target's prefix.
+Use **Delete** for one file or **Delete all files** for the displayed list;
+both require confirmation. Successful deletions remove matching deployment
+records. Failed deletions remain visible with an error message. Historical
+versions and soft-deleted files are excluded from this view.
+
+## Azure Blob Storage delivery
+
+In **Targets → New target**, select **Azure Blob Storage**. Supply an existing
+storage account's Blob URL (`https://<account>.blob.core.windows.net`), its access
+key, and a container name. Saving creates the container if it is missing;
+storage account creation is managed separately in Azure. Keys are encrypted at
+rest and masked in the UI.
+
+Enable **Public downloads** to allow anonymous reads of every blob in that
+container, without anonymous listing or writes. The storage account must allow
+Blob anonymous access; see [Azure public access settings](https://learn.microsoft.com/en-us/azure/storage/blobs/anonymous-read-access-configure).
+Leave it disabled for private blobs. Optionally set a CDN/custom domain URL for
+the container and a blob prefix. Deploy and remove files using the existing
+deployment UI. **Delete container** checks that the container has no blobs,
+snapshots, or versions before deleting it and its target.
+
+## Cloudflare R2 delivery
+
+Select **Cloudflare R2** under **Targets → New target**. Enter your 32-character
+Cloudflare account ID, bucket name, and R2 S3 Access Key ID / Secret Access Key.
+Use Admin Read & Write R2 credentials to create buckets. The app builds the R2
+endpoint, uses region `auto`, and creates a missing bucket on save. File listing,
+single/bulk deletion, and empty-bucket deletion use the existing target UI.
+
+For public downloads, supply an enabled `https://pub-<id>.r2.dev` URL or a
+connected custom domain as **Public base URL**. Alternatively, enable **Enable
+public r2.dev downloads** and supply a separate Cloudflare API token with R2
+storage write permission; the app enables and discovers the bucket's managed
+public domain. This exposes all objects in the bucket through r2.dev. Custom
+domains are configured separately in Cloudflare. Without either public option,
+the app returns signed download links that expire after one hour; refreshing the
+file list generates new links. Credentials and API tokens are encrypted and
+masked. Existing generic S3-compatible R2 targets continue to work.
+
+See [R2 S3 setup](https://developers.cloudflare.com/r2/get-started/s3/) and
+[public bucket settings](https://developers.cloudflare.com/r2/buckets/public-buckets/).
+
 ## License
 
 MIT
