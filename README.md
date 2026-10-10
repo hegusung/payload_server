@@ -56,6 +56,27 @@ Open `http://localhost:7082` for the management UI.
 
 ---
 
+## Integration with mythic-payload-webapp
+
+Configure in mythic-payload-webapp **Settings**:
+- **Payload Server URL**: `http://<host>:7082`
+- **Payload Server Token**: value of `MGMT_TOKEN`
+
+In a downloader stage, select `📦 payload-server` as the **C2 Profile** and set the special parameters:
+
+| Parameter | Description |
+|-----------|-------------|
+| `downloader_contenttype` | Content-Type to serve (triggers matching preset) |
+| `downloader_prepend` | Bytes before payload (magic bytes from preset + random fill) |
+| `downloader_append` | Bytes after payload (random fill + magic bytes from preset) |
+| `downloader_filename` | Decoy filename in Content-Disposition |
+| `downloader_transform` | Transform pipeline, e.g. `xor,base64` |
+| `downloader_xor_key` | XOR key (default `0x41`) |
+
+> `Base URL` and `Profile URL` are the address injected into the payload (what the target contacts) — not the payload-server address.
+
+---
+
 ## Content-Type Presets
 
 The **🎨 Content-Type Presets** tab lets you configure magic bytes for each MIME type. When a file is served with `prepend_bytes > 0` or `append_bytes > 0`, the padding is built as:
@@ -193,26 +214,6 @@ Uploading to an existing URI **overwrites** the file and resets the download cou
 | `PUT` | `/api/presets/{id}` | Update a preset |
 | `DELETE` | `/api/presets/{id}` | Delete a preset |
 
----
-
-## Integration with mythic-payload-webapp
-
-Configure in mythic-payload-webapp **Settings**:
-- **Payload Server URL**: `http://<host>:7082`
-- **Payload Server Token**: value of `MGMT_TOKEN`
-
-In a downloader stage, select `📦 payload-server` as the **C2 Profile** and set the special parameters:
-
-| Parameter | Description |
-|-----------|-------------|
-| `downloader_contenttype` | Content-Type to serve (triggers matching preset) |
-| `downloader_prepend` | Bytes before payload (magic bytes from preset + random fill) |
-| `downloader_append` | Bytes after payload (random fill + magic bytes from preset) |
-| `downloader_filename` | Decoy filename in Content-Disposition |
-| `downloader_transform` | Transform pipeline, e.g. `xor,base64` |
-| `downloader_xor_key` | XOR key (default `0x41`) |
-
-> `Base URL` and `Profile URL` are the address injected into the payload (what the target contacts) — not the payload-server address.
 
 ---
 
